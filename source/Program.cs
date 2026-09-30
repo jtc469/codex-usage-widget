@@ -162,6 +162,17 @@ internal sealed class UsageForm : Form
     private UsageSnapshot? _snapshot;
     private string? _error = "Loading Codex usage…";
 
+    // Layout is column-based: the label, bar and percent columns are fixed width, and only
+    // the reset text varies. These constants are shared by OnPaint and RequiredWidth so the
+    // measured window width and the drawn layout can never disagree.
+    private const int EdgePad = 13;
+    private const int ModuleGap = 18;
+    private const int ResetColumnX = 154;
+    private const int LoadingWidth = 340;
+    private static readonly Font LabelFont = new("Segoe UI Semibold", 8.5f);
+    private static readonly Font ValueFont = new("Segoe UI Semibold", 8.5f);
+    private static readonly Font DetailFont = new("Segoe UI", 8f);
+
     public UsageForm()
     {
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -195,6 +206,7 @@ internal sealed class UsageForm : Form
     {
         _snapshot = snapshot;
         _error = null;
+        PositionOverTaskbar();
         Invalidate();
     }
 
@@ -225,30 +237,25 @@ internal sealed class UsageForm : Form
         if (_snapshot is null)
         {
             TextRenderer.DrawText(g, _error ?? "Loading…", new Font("Segoe UI", 9f),
-                new Rectangle(13, 0, Width - 26, Height), Color.Gainsboro,
+                new Rectangle(EdgePad, 0, Width - EdgePad * 2, Height), Color.Gainsboro,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             return;
         }
 
-        var gap = 18;
-        var moduleWidth = (Width - 26 - gap) / 2;
-        DrawModule(g, new Rectangle(13, 0, moduleWidth, Height), "5h", _snapshot.Primary);
+        var moduleWidth = (Width - EdgePad * 2 - ModuleGap) / 2;
+        DrawModule(g, new Rectangle(EdgePad, 0, moduleWidth, Height), "5h", _snapshot.Primary);
 
         using var separator = new Pen(Color.FromArgb(45, 255, 255, 255));
-        var separatorX = 13 + moduleWidth + gap / 2;
+        var separatorX = EdgePad + moduleWidth + ModuleGap / 2;
         g.DrawLine(separator, separatorX, 9, separatorX, Height - 9);
 
-        DrawModule(g, new Rectangle(13 + moduleWidth + gap, 0, moduleWidth, Height), "7d", _snapshot.Secondary);
+        DrawModule(g, new Rectangle(EdgePad + moduleWidth + ModuleGap, 0, moduleWidth, Height), "7d", _snapshot.Secondary);
     }
 
     private static void DrawModule(Graphics g, Rectangle bounds, string label, UsageWindow window)
     {
-        using var labelFont = new Font("Segoe UI Semibold", 8.5f);
-        using var valueFont = new Font("Segoe UI Semibold", 8.5f);
-        using var detailFont = new Font("Segoe UI", 8f);
-
         var centerY = bounds.Top + bounds.Height / 2;
-        TextRenderer.DrawText(g, label, labelFont, new Point(bounds.Left, centerY - 8), Color.FromArgb(220, 220, 220),
+        TextRenderer.DrawText(g, label, LabelFont, new Point(bounds.Left, centerY - 8), Color.FromArgb(220, 220, 220),
             TextFormatFlags.NoPadding);
 
         var bar = new Rectangle(bounds.Left + 27, centerY - 4, 76, 8);
@@ -266,13 +273,33 @@ internal sealed class UsageForm : Form
         }
 
         var percentText = $"{window.Remaining:0}%";
-        TextRenderer.DrawText(g, percentText, valueFont, new Rectangle(bounds.Left + 112, 0, 39, bounds.Height),
+        TextRenderer.DrawText(g, percentText, ValueFont, new Rectangle(bounds.Left + 112, 0, 39, bounds.Height),
             Color.WhiteSmoke, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
-        var resetText = window.ResetsAt is null ? "" : $"↻ {FormatReset(window.ResetsAt.Value)}";
-        TextRenderer.DrawText(g, resetText, detailFont, new Rectangle(bounds.Left + 154, 0, bounds.Width - 154, bounds.Height),
+        var resetText = ResetText(window);
+        TextRenderer.DrawText(g, resetText, DetailFont,
+            new Rectangle(bounds.Left + ResetColumnX, 0, bounds.Width - ResetColumnX, bounds.Height),
             Color.FromArgb(185, 185, 190), TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
             TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+    }
+
+    private static string ResetText(UsageWindow window) =>
+        window.ResetsAt is null ? "" : $"↻ {FormatReset(window.ResetsAt.Value)}";
+
+    // Width the content actually needs: the fixed columns plus the widest reset string.
+    // Without this the window stays a flat 576px and leaves ~66px of dead box per module.
+    private int RequiredWidth()
+    {
+        if (_snapshot is null) return LoadingWidth;
+        var reset = Math.Max(ResetWidth(_snapshot.Primary), ResetWidth(_snapshot.Secondary));
+        return EdgePad * 2 + ModuleGap + (ResetColumnX + reset) * 2;
+    }
+
+    private static int ResetWidth(UsageWindow window)
+    {
+        var text = ResetText(window);
+        return text.Length == 0 ? 0 : TextRenderer.MeasureText(text, DetailFont,
+            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
     }
 
     private static Color UsageColor(double remaining) => remaining switch
@@ -310,7 +337,7 @@ internal sealed class UsageForm : Form
 
         var horizontal = taskbarRect.Width > taskbarRect.Height;
         var availableWidth = Math.Max(340, screenRect.Width / 2 - 90);
-        var width = Math.Min(576, availableWidth);
+        var width = Math.Min(RequiredWidth(), availableWidth);
         var height = horizontal ? Math.Clamp(taskbarRect.Height - 8, 34, 44) : 40;
         var x = screenRect.Left + 10;
         var y = horizontal && taskbarRect.Top > screenRect.Top + screenRect.Height / 2
