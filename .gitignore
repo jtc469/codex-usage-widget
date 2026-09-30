@@ -1,0 +1,11 @@
+# Build output
+bin/
+obj/
+
+# Local backups
+*.bak
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
