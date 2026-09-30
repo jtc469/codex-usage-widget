@@ -1,6 +1,8 @@
 # Codex Usage Widget
 
-A small Windows 11 taskbar overlay showing the remaining Codex five-hour and seven-day allowances.
+A small Windows 11 taskbar overlay showing the remaining Codex five-hour and seven-day allowances. I built this with Codex & Claude.
+
+Too many tabs open may cause the widget to overlay on the search bar.
 
 ## Build
 
